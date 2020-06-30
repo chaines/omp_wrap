@@ -5,7 +5,7 @@
             "cflags!": [ "-fno-exceptions" ],
             "cflags_cc!": [ "-fno-exceptions" ],
             "sources": [ 
-                "OmpWrap.cc",
+                "OmpWrap.cpp",
                 "OMPEval/omp/CardRange.cpp",
                 "OMPEval/omp/CombinedRange.cpp",
                 "OMPEval/omp/EquityCalculator.cpp",
