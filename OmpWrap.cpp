@@ -25,18 +25,30 @@ Napi::Value CompareRobust(const Napi::CallbackInfo& info) {
         //We have to explicitely cast to string, otherwise it prints a memory location
         ranges.push_back(omp::CardRange((std::string) hands.Get(i).ToString()));
     }
-
-    std::string boardCards = args.Get("boardCards").ToString();
-    std::string deadCards = args.Get("deadCards").ToString();
-    bool enumerateAll = args.Get("enumerate").ToBoolean();
-    // Not actually called asynchronously (in the C++)
-    Napi::Function callback = args.Get("callback").As<Napi::Function>();
-    double stdevTarget = args.Get("stdevTarget").ToNumber();
-    // Currently does nothing
-    //  TODO: Implement a way to utilize updateinterval
-    double updateInterval = args.Get("updateInterval").ToNumber();
-    uint64_t bcMask = omp::CardRange::getCardMask(boardCards);
-    uint64_t dcMask = omp::CardRange::getCardMask(deadCards);
+    std::string boardCards, deadCards;
+    bool enumerateAll;
+    Napi::Function callback;
+    double stdevTarget, updateInterval;
+    uint64_t bcMask, dcMask;
+    if(args.Get("boardCards").IsString()) {
+        boardCards = args.Get("boardCards").ToString();
+        bcMask = omp::CardRange::getCardMask(boardCards);
+    }
+    else {
+        boardCards = "";
+        bcMask = 0;
+    }
+    if(args.Get("deadCards").IsString()) {
+        deadCards = args.Get("deadCards").ToString();
+        dcMask = omp::CardRange::getCardMask(deadCards);
+    } else {
+        deadCards = "";
+        dcMask = 0;
+    }
+    enumerateAll = args.Get("enumerate").IsBoolean() ? (bool) args.Get("enumerate").ToBoolean() : false;
+    if(args.Get("callback").IsFunction()) callback = args.Get("callback").As<Napi::Function>();
+    stdevTarget = args.Get("stdevTarget").IsNumber() ? (double) args.Get("stdevTarget").ToNumber() : 5e-5;
+    updateInterval = args.Get("updateInterval").IsNumber() ? (double) args.Get("updateInterval").ToNumber() : 0.2;
 
     omp::EquityCalculator calc;
     calc.start(ranges, bcMask, dcMask, enumerateAll, stdevTarget, nullptr, updateInterval);
@@ -68,7 +80,8 @@ Napi::Value CompareRobust(const Napi::CallbackInfo& info) {
     r.Set("exhaustive", exhaustive);
     r.Set("finished", finished);
 
-    callback.Call({r});
+    if(!callback.IsEmpty())
+        callback.Call({r});
     
     return r;
 }
