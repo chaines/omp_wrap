@@ -11,10 +11,5 @@
   "dependencies": {
     "bindings": "^1.2.1",
     "node-addon-api": "^3.0.0"
-  },
-  "scripts": {
-    "preinstall": "echo \"Help\" && git submodule update --init",
-    "install": "node-gyp rebuild",
-    "postinstall": "git submodule deinit ."
   }
 }
