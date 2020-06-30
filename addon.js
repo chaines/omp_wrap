@@ -1,2 +1,4 @@
-const omp = require("./build/Release/omp_wrap.node");
+import bindings from "bindings";
+const omp = bindings("omp_wrap");
+
 export default omp;
