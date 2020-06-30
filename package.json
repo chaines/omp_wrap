@@ -1,0 +1,15 @@
+{
+  "name": "omp_wrap",
+  "version": "0.1.0",
+  "description": "A Node wrapper for the OMPEval library",
+  "main": "addon.js",
+  "gypfile": true,
+  "type": "module",
+  "engines": {
+    "node": ">14.0"
+  },
+  "dependencies": {
+    "bindings": "^1.2.1",
+    "node-addon-api": "^3.0.0"
+  }
+}
