@@ -5,42 +5,53 @@
 #include "OMPEval/omp/HandEvaluator.h"
 #include "OMPEval/omp/Hand.h"
 
-Napi::Value CompareMultiple(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
+// My C++ skills are subpar to say the least
+// I can't figure out how to call a Napi::ThreadSafeFunction within EquityCalculator,
+// meaning the best way to return partial results is to change EquityCalculator to stop
+// at a set time interval and provide a continue() method to fetch the next (timeInterval)
+// of results until all results are returned.
+//
+// For now, we're just calling the callback once, at the end, synchronously.
 
+Napi::Value CompareRobust(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    Napi::Value params = info[0];
+    if(params.IsEmpty() || params.IsNull() || params.IsUndefined() || !params.IsObject())
+        return Napi::Boolean::New(env, false);
+    Napi::Object args = params.As<Napi::Object>();
     std::vector<omp::CardRange> ranges;
-    Napi::Array hands = info[0].As<Napi::Array>();
-    const int len = hands.Length();
-    for(int i = 0; i < len; i++) {
+    Napi::Array hands = args.Get("handRanges").As<Napi::Array>();
+    for(int i = 0; i < hands.Length(); ++i) {
+        //We have to explicitely cast to string, otherwise it prints a memory location
         ranges.push_back(omp::CardRange((std::string) hands.Get(i).ToString()));
     }
-    Napi::Value param2 = info[1];
-    uint64_t board = 0;
-    if(!(param2.IsEmpty() && param2.IsNull() && param2.IsUndefined())) {
-        if(param2.IsArray()) {
-            Napi::Array boardArr = param2.As<Napi::Array>();
-            std::string boardString;
-            for(int i = 0; i < boardArr.Length(); i++) {
-                boardString += (std::string) boardArr.Get(i).ToString();
-            }
-            board = omp::CardRange::getCardMask(boardString);
-        } else if(param2.IsString()) {
-            board = omp::CardRange::getCardMask((std::string) param2.ToString());
-        }
-    }
+
+    std::string boardCards = args.Get("boardCards").ToString();
+    std::string deadCards = args.Get("deadCards").ToString();
+    bool enumerateAll = args.Get("enumerate").ToBoolean();
+    // Not actually called asynchronously (in the C++)
+    Napi::Function callback = args.Get("callback").As<Napi::Function>();
+    double stdevTarget = args.Get("stdevTarget").ToNumber();
+    // Currently does nothing
+    //  TODO: Implement a way to utilize updateinterval
+    double updateInterval = args.Get("updateInterval").ToNumber();
+    uint64_t bcMask = omp::CardRange::getCardMask(boardCards);
+    uint64_t dcMask = omp::CardRange::getCardMask(deadCards);
 
     omp::EquityCalculator calc;
-    calc.start(ranges, board, 0, true, 0, nullptr, 0.1, 0);
+    calc.start(ranges, bcMask, dcMask, enumerateAll, stdevTarget, nullptr, updateInterval);
     calc.wait();
     omp::EquityCalculator::Results results = calc.getResults();
 
-    Napi::Object nResults = Napi::Object::New(env);
+    Napi::Object r = Napi::Object::New(env);
     Napi::Number players = Napi::Number::New(env, results.players);
     Napi::Array equities = Napi::Array::New(env);
     Napi::Array wins = Napi::Array::New(env);
     double ties = 0;
     Napi::Number count = Napi::Number::New(env, results.hands);
     Napi::Number time = Napi::Number::New(env, results.time);
+    Napi::Boolean exhaustive = Napi::Boolean::New(env, results.enumerateAll);
+    Napi::Boolean finished = Napi::Boolean::New(env, results.finished);
 
     for(int i = 0; i < results.players; i++) {
         equities.Set(i, Napi::Number::New(env, results.equity[i]));
@@ -48,64 +59,25 @@ Napi::Value CompareMultiple(const Napi::CallbackInfo& info) {
         ties += results.ties[i];
     }
 
-    nResults.Set("players", players);
-    nResults.Set("equities", equities);
-    nResults.Set("wins", wins);
-    nResults.Set("ties", Napi::Number::New(env, ties));
-    nResults.Set("count", count);
-    nResults.Set("time", time);
-    nResults.Set("exhaustive", Napi::Boolean::New(env, results.enumerateAll));
+    r.Set("players", players);
+    r.Set("equities", equities);
+    r.Set("wins", wins);
+    r.Set("ties", Napi::Number::New(env, ties));
+    r.Set("count", count);
+    r.Set("time", time);
+    r.Set("exhaustive", exhaustive);
+    r.Set("finished", finished);
 
-    return nResults;
-}
-
-Napi::Value CompareHoldemPreflop(const Napi::CallbackInfo& info) {
-    Napi::Env env = info.Env();
-
-    if(info.Length() != 2) {
-        return env.Null();
-    }
-
-    std::string h1s = (std::string) info[0].ToString();
-    std::string h2s = (std::string) info[1].ToString();
-    omp::CardRange h1(h1s);
-    omp::CardRange h2(h2s);
-    omp::EquityCalculator calc;
-
-    calc.start({h1, h2}, 0, 0, true, 0, nullptr, 0.1, 0);
-    calc.wait();
-    omp::EquityCalculator::Results results = calc.getResults();
-
-    Napi::Object napiResults = Napi::Object::New(env);
-    Napi::Number players = Napi::Number::New(env,results.players);
-    Napi::Number h1equity = Napi::Number::New(env, results.equity[0]);
-    Napi::Number h2equity = Napi::Number::New(env, results.equity[1]);
-    Napi::Number numHands = Napi::Number::New(env, results.evaluatedPreflopCombos);
-
-
-    napiResults.Set("players", players);
-    napiResults.Set("h1equity", h1equity);
-    napiResults.Set("h1wins", Napi::Number::New(env, results.wins[0]));
-    napiResults.Set("h2equity", h2equity);
-    napiResults.Set("h2wins", Napi::Number::New(env, results.wins[1]));
-    napiResults.Set("ties", Napi::Number::New(env, results.ties[0] + results.ties[1]));
-    napiResults.Set("numHands", numHands);
-    napiResults.Set("count", Napi::Number::New(env, results.hands));
-    napiResults.Set("time", Napi::Number::New(env, results.time));
-    napiResults.Set("exhaustive", Napi::Boolean::New(env, results.enumerateAll));
-
-    return napiResults;
+    callback.Call({r});
+    
+    return r;
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    exports.Set(
-        Napi::String::New(env, "compare2"),
-        Napi::Function::New(env, CompareHoldemPreflop)
-    );
 
     exports.Set(
-        Napi::String::New(env, "compareAny"),
-        Napi::Function::New(env, CompareMultiple)
+        Napi::String::New(env, "evaluateHands"),
+        Napi::Function::New(env, CompareRobust)
     );
     return exports;
 }
